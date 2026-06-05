@@ -1,7 +1,9 @@
 import {
   Activity,
+  Briefcase,
   Building2,
   LayoutDashboard,
+  Network,
   Receipt,
   ScrollText,
   Settings,
@@ -16,6 +18,7 @@ import {
   BillingPermissions,
   IdentityPermissions,
   MultitenancyPermissions,
+  OrganizationPermissions,
 } from "@/lib/permissions";
 
 /** A single nav destination — label, route, icon, optional perm guard. */
@@ -83,6 +86,25 @@ export const sections: NavSection[] = [
         label: "Impersonation",
         icon: UserCog,
         perms: [IdentityPermissions.Impersonation.View],
+      },
+    ],
+  },
+  {
+    id: "organization",
+    caption: "Organization",
+    icon: Network,
+    items: [
+      {
+        to: "/organization/departments",
+        label: "Departments",
+        icon: Network,
+        perms: [OrganizationPermissions.Departments.View],
+      },
+      {
+        to: "/organization/positions",
+        label: "Positions",
+        icon: Briefcase,
+        perms: [OrganizationPermissions.Positions.View],
       },
     ],
   },
@@ -210,6 +232,20 @@ export const NAV_ITEMS: NavItem[] = [
     matchPrefix: "/webhooks",
   },
   { to: "/health", label: "Health", icon: Activity, matchPrefix: "/health" },
+  {
+    to: "/organization/departments",
+    label: "Departments",
+    icon: Network,
+    matchPrefix: "/organization/departments",
+    perms: [OrganizationPermissions.Departments.View],
+  },
+  {
+    to: "/organization/positions",
+    label: "Positions",
+    icon: Briefcase,
+    matchPrefix: "/organization/positions",
+    perms: [OrganizationPermissions.Positions.View],
+  },
 ];
 
 /** @deprecated Use filterNavSpec instead. */

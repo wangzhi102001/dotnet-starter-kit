@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<RootNamespace>FSH.Starter.Migrations.PostgreSQL</RootNamespace>
@@ -20,6 +20,7 @@
 	  <ProjectReference Include="..\..\Modules\Chat\Modules.Chat\Modules.Chat.csproj" />
 	  <ProjectReference Include="..\..\Modules\Notifications\Modules.Notifications\Modules.Notifications.csproj" />
 	  <ProjectReference Include="..\..\Modules\Files\Modules.Files\Modules.Files.csproj" />
+	  <ProjectReference Include="..\..\Modules\Organization\Modules.Organization\Modules.Organization.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -31,6 +32,7 @@
 	  <Folder Include="Chat\" />
 	  <Folder Include="Notifications\" />
 	  <Folder Include="Files\" />
+	  <Folder Include="Organization\" />
 	</ItemGroup>
 
 </Project>

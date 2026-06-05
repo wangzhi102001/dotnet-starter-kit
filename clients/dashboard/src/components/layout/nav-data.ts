@@ -1,11 +1,13 @@
 import {
   Activity,
+  Briefcase,
   CreditCard,
   FolderOpen,
   FolderTree,
   HeartPulse,
   LayoutDashboard,
   MessageCircle,
+  Network,
   Package,
   Receipt,
   ScrollText,
@@ -91,6 +93,15 @@ export const sections: NavSection[] = [
       { to: "/identity/users", label: "Users", icon: Users },
       { to: "/identity/roles", label: "Roles", icon: ShieldCheck },
       { to: "/identity/groups", label: "Groups", icon: UsersRound },
+    ],
+  },
+  {
+    id: "organization",
+    caption: "Organization",
+    icon: Network,
+    items: [
+      { to: "/organization/departments", label: "Departments", icon: Network },
+      { to: "/organization/positions", label: "Positions", icon: Briefcase },
     ],
   },
   {

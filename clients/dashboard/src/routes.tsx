@@ -59,6 +59,8 @@ const ProductDetailPage = lazyNamed(
   () => import("@/pages/catalog/product-detail"),
   "ProductDetailPage",
 );
+const DepartmentsPage = lazyNamed(() => import("@/pages/organization/departments"), "DepartmentsPage");
+const PositionsPage = lazyNamed(() => import("@/pages/organization/positions"), "PositionsPage");
 const NotFoundPage = lazyNamed(() => import("@/pages/not-found"), "NotFoundPage");
 const SettingsLayout = lazyNamed(
   () => import("@/pages/settings/settings-layout"),
@@ -187,6 +189,9 @@ export const router = createBrowserRouter([
           { path: "identity/roles/:roleId", element: withSuspense(<RoleDetailPage />) },
           { path: "identity/groups", element: withSuspense(<GroupsPage />) },
           { path: "identity/groups/:groupId", element: withSuspense(<GroupDetailPage />) },
+          { path: "organization", element: <Navigate to="/organization/departments" replace /> },
+          { path: "organization/departments", element: withSuspense(<DepartmentsPage />) },
+          { path: "organization/positions", element: withSuspense(<PositionsPage />) },
           { path: "catalog", element: <Navigate to="/catalog/brands" replace /> },
           { path: "catalog/brands", element: withSuspense(<BrandsPage />) },
           { path: "catalog/categories", element: withSuspense(<CategoriesPage />) },

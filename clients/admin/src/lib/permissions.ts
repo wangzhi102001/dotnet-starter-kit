@@ -68,6 +68,21 @@ export const AuditingPermissions = Object.freeze({
   },
 } as const);
 
+export const OrganizationPermissions = Object.freeze({
+  Departments: {
+    View: "Permissions.Organization.Departments.View",
+    Manage: "Permissions.Organization.Departments.Manage",
+  },
+  Positions: {
+    View: "Permissions.Organization.Positions.View",
+    Manage: "Permissions.Organization.Positions.Manage",
+  },
+  UserDepartments: {
+    View: "Permissions.Organization.UserDepartments.View",
+    Manage: "Permissions.Organization.UserDepartments.Manage",
+  },
+} as const);
+
 // ─── Catalog (drives the Role editor) ───────────────────────────────────
 
 export type PermissionEntry = {
@@ -162,6 +177,18 @@ export const PERMISSION_CATALOG: readonly PermissionGroup[] = [
     entries: [
       { name: IdentityPermissions.Impersonation.View, description: "View impersonation grants" },
       { name: IdentityPermissions.Impersonation.Revoke, description: "Revoke active impersonation grants" },
+    ],
+  },
+  {
+    category: "Organization",
+    blurb: "Manage organizational structure — departments, positions, and user assignments.",
+    entries: [
+      { name: OrganizationPermissions.Departments.View, description: "View departments", basic: true },
+      { name: OrganizationPermissions.Departments.Manage, description: "Create, update, and delete departments" },
+      { name: OrganizationPermissions.Positions.View, description: "View positions", basic: true },
+      { name: OrganizationPermissions.Positions.Manage, description: "Create, update, and delete positions" },
+      { name: OrganizationPermissions.UserDepartments.View, description: "View user-department assignments", basic: true },
+      { name: OrganizationPermissions.UserDepartments.Manage, description: "Assign and remove user-department memberships" },
     ],
   },
 ];

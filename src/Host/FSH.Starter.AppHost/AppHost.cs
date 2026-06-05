@@ -36,7 +36,7 @@ var postgres = postgresServer.AddDatabase("fsh-db");
 // modules, and Hangfire is on Postgres — so nothing is Redis-specific.
 // Resource name stays "redis" so connection strings / config keys don't churn.
 var redis = builder.AddRedis("redis")
-    .WithImage("valkey/valkey", "8")
+    .WithImage("valkey/valkey", "latest")
     .WithDataVolume($"{appPrefix}-redis-data")
     .WithLifetime(ContainerLifetime.Persistent)
     // RedisInsight cache browser — Aspire auto-wires it to the resource above,

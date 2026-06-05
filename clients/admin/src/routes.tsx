@@ -12,6 +12,7 @@ import {
   BillingPermissions,
   IdentityPermissions,
   MultitenancyPermissions,
+  OrganizationPermissions,
 } from "@/lib/permissions";
 
 // Lazy-loaded pages — each `import()` becomes its own bundle chunk so the
@@ -42,6 +43,8 @@ const ImpersonationListPage = lazyNamed(() => import("@/pages/impersonation/list
 const WebhooksListPage = lazyNamed(() => import("@/pages/webhooks/list"), "WebhooksListPage");
 const WebhookDetailPage = lazyNamed(() => import("@/pages/webhooks/detail"), "WebhookDetailPage");
 const NotificationsInboxPage = lazyNamed(() => import("@/pages/notifications/inbox"), "NotificationsInboxPage");
+const DepartmentsPage = lazyNamed(() => import("@/pages/organization/departments"), "DepartmentsPage");
+const PositionsPage = lazyNamed(() => import("@/pages/organization/positions"), "PositionsPage");
 const SettingsLayout = lazyNamed(() => import("@/pages/settings/layout"), "SettingsLayout");
 const ProfileSettings = lazyNamed(() => import("@/pages/settings/profile"), "ProfileSettings");
 const SecuritySettings = lazyNamed(() => import("@/pages/settings/security"), "SecuritySettings");
@@ -195,6 +198,28 @@ export const router = createBrowserRouter([
           // Webhooks — any signed-in user can manage their tenant's subscriptions
           { path: "webhooks", element: <WebhooksListPage /> },
           { path: "webhooks/:id", element: <WebhookDetailPage /> },
+
+          // Organization — departments and positions
+          {
+            path: "organization",
+            element: <Navigate to="/organization/departments" replace />,
+          },
+          {
+            path: "organization/departments",
+            element: (
+              <RouteGuard perms={[OrganizationPermissions.Departments.View]}>
+                <DepartmentsPage />
+              </RouteGuard>
+            ),
+          },
+          {
+            path: "organization/positions",
+            element: (
+              <RouteGuard perms={[OrganizationPermissions.Positions.View]}>
+                <PositionsPage />
+              </RouteGuard>
+            ),
+          },
 
           // Notifications inbox — available to every signed-in user
           { path: "notifications", element: <NotificationsInboxPage /> },

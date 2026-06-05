@@ -16,6 +16,8 @@ using FSH.Modules.Multitenancy.Data;
 using FSH.Modules.Multitenancy.Features.v1.GetTenantStatus;
 using FSH.Modules.Tickets;
 using FSH.Modules.Webhooks;
+using FSH.Modules.Organization;
+using FSH.Modules.Organization.Contracts;
 using FSH.Starter.DbMigrator;
 using FSH.Starter.DbMigrator.DemoSeed;
 using Finbuckle.MultiTenant.Abstractions;
@@ -125,6 +127,8 @@ builder.Services.AddMediator(o =>
         typeof(FSH.Modules.Chat.ChatModule),
         typeof(FSH.Modules.Notifications.Contracts.v1.Commands.MarkNotificationReadCommand),
         typeof(FSH.Modules.Notifications.NotificationsModule),
+        typeof(OrganizationContractsMarker),
+        typeof(OrganizationModule),
     ];
 });
 
@@ -140,6 +144,7 @@ var moduleAssemblies = new Assembly[]
     typeof(TicketsModule).Assembly,
     typeof(FSH.Modules.Chat.ChatModule).Assembly,
     typeof(FSH.Modules.Notifications.NotificationsModule).Assembly,
+    typeof(OrganizationModule).Assembly,
 };
 
 // Disable every runtime-only concern. Persistence + multitenancy stay enabled

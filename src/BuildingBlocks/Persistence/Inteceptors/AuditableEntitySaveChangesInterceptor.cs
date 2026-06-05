@@ -94,6 +94,15 @@ public sealed class AuditableEntitySaveChangesInterceptor : SaveChangesIntercept
                 }
             }
 
+            if (entry.Entity is IHasDepartment deptEntity
+                && entry.State == EntityState.Added
+                && deptEntity.OwnerDepartmentId is null)
+            {
+                var primaryDeptId = _currentUser.GetUserClaims()
+                    ?.FirstOrDefault(c => c.Type == "primary_department_id")?.Value;
+                deptEntity.OwnerDepartmentId = primaryDeptId;
+            }
+
             if (entry.Entity is ISoftDeletable && entry.State == EntityState.Deleted)
             {
                 entry.State = EntityState.Modified;
