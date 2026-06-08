@@ -47,7 +47,16 @@ output "alb_zone_id" {
 
 output "api_url" {
   description = "API URL."
-  value       = var.enable_https && var.domain_name != null ? "https://${var.domain_name}/api" : "http://${module.alb.dns_name}/api"
+  value = (
+    var.enable_https && var.domain_name != null ? "https://${var.domain_name}/api" :
+    var.enable_api_cloudfront ? "https://${one(aws_cloudfront_distribution.api[*].domain_name)}/api" :
+    "http://${module.alb.dns_name}/api"
+  )
+}
+
+output "api_cloudfront_domain" {
+  description = "CloudFront domain fronting the API (null unless enable_api_cloudfront)."
+  value       = one(aws_cloudfront_distribution.api[*].domain_name)
 }
 
 ################################################################################
@@ -69,6 +78,18 @@ output "api_service_name" {
   value       = module.api_service.service_name
 }
 
+output "migrator" {
+  description = "DbMigrator one-shot task details for `aws ecs run-task` (deploy scripts), or null when not provisioned."
+  value = var.enable_migrator ? {
+    cluster_arn            = module.ecs_cluster.arn
+    task_definition_family = module.migrator[0].task_definition_family
+    container_name         = module.migrator[0].container_name
+    security_group_id      = module.migrator[0].security_group_id
+    subnet_ids             = module.network.private_subnet_ids
+    log_group_name         = module.migrator[0].log_group_name
+  } : null
+}
+
 ################################################################################
 # Database Outputs
 ################################################################################
@@ -86,6 +107,21 @@ output "rds_port" {
 output "rds_secret_arn" {
   description = "RDS Secrets Manager secret ARN (if manage_master_user_password is true)."
   value       = module.rds.secret_arn
+}
+
+################################################################################
+# Application Secrets (generated)
+################################################################################
+
+output "hangfire_password" {
+  description = "Generated Hangfire dashboard password (also in Secrets Manager)."
+  value       = random_password.hangfire.result
+  sensitive   = true
+}
+
+output "jwt_signing_key_secret_arn" {
+  description = "Secrets Manager ARN holding the API's JWT signing key."
+  value       = aws_secretsmanager_secret.jwt_signing_key.arn
 }
 
 ################################################################################

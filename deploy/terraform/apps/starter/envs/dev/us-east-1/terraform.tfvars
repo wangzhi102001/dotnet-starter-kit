@@ -43,6 +43,10 @@ dashboard_s3_bucket_name = "dev-fsh-dashboard"
 admin_s3_bucket_name     = "dev-fsh-admin"
 dashboard_demo_mode      = true
 
+# HTTPS for the API without a custom domain: front the ALB with CloudFront
+# (free *.cloudfront.net cert) so the HTTPS SPAs can call it (no mixed content).
+enable_api_cloudfront = true
+
 ################################################################################
 # Database
 ################################################################################
@@ -53,13 +57,34 @@ db_manage_master_user_password = true
 
 ################################################################################
 # Container Images
+#
+# Final image refs are "<registry>/<image_name>:<tag>", e.g.
+#   ghcr.io/fullstackhero/fsh-api:<tag>
+#   ghcr.io/fullstackhero/fsh-db-migrator:<tag>
+# The tag is SHARED by both images (built together from the same commit) and must
+# be immutable. CI publishes "dev-<full-sha>"; `deploy.sh --build-api` publishes a
+# bare 12-char short SHA. Set the tag to whichever was actually pushed to GHCR.
 ################################################################################
 
-container_image_tag = "1d2c9f9d3b85bb86229f1bc1b9cd8196054f2166"
+container_registry  = "ghcr.io/fullstackhero"
+api_image_name      = "fsh-api"
+migrator_image_name = "fsh-db-migrator"
+container_image_tag = "dev-ba3e9498632df227a04a633e3573b646c9c2aa62"
+
+################################################################################
+# DbMigrator — dev migrates AND seeds (admin + default tenant) on every deploy.
+# Seeding is idempotent; Seed:* config comes from the image's appsettings.Development.json.
+# Override explicitly via seed_default_admin_password / seed_demo_password if needed.
+# Demo tenants (acme/globex) are opt-in: run deploy with --seed-demo / -SeedDemo.
+################################################################################
+
+migrator_command = ["apply", "--seed"]
 
 ################################################################################
 # Services (Fargate Spot for cost savings)
 ################################################################################
 
+api_cpu              = "1024" # 1 vCPU
+api_memory           = "2048" # 2 GB — Fargate's minimum memory for 1 vCPU
 api_desired_count    = 1
 api_use_fargate_spot = true

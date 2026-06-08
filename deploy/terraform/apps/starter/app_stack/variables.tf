@@ -138,6 +138,12 @@ variable "acm_certificate_arn" {
   default     = null
 }
 
+variable "enable_api_cloudfront" {
+  type        = bool
+  description = "Front the API ALB with a CloudFront distribution for HTTPS without a custom domain (free *.cloudfront.net cert). Ignored when enable_https + domain_name are set."
+  default     = false
+}
+
 variable "ssl_policy" {
   type        = string
   description = "SSL policy for the HTTPS listener."
@@ -376,10 +382,16 @@ variable "redis_num_cache_clusters" {
   default     = 1
 }
 
+variable "redis_engine" {
+  type        = string
+  description = "ElastiCache engine: 'valkey' (default) or 'redis'. Valkey is Redis-compatible and matches the Aspire/compose stack."
+  default     = "valkey"
+}
+
 variable "redis_engine_version" {
   type        = string
-  description = "Redis engine version."
-  default     = "7.2"
+  description = "ElastiCache engine version. Valkey: 8.0 / 7.2. Redis (legacy): max 7.1."
+  default     = "8.0"
 }
 
 variable "redis_automatic_failover_enabled" {
@@ -480,6 +492,70 @@ variable "api_image_name" {
   type        = string
   description = "API container image name (without registry or tag)."
   default     = "fsh-api"
+}
+
+variable "migrator_image_name" {
+  type        = string
+  description = "DbMigrator container image name (without registry or tag)."
+  default     = "fsh-db-migrator"
+}
+
+################################################################################
+# DbMigrator (one-shot ECS task) Variables
+################################################################################
+
+variable "enable_migrator" {
+  type        = bool
+  description = "Register the DbMigrator one-shot ECS task definition."
+  default     = true
+}
+
+variable "migrator_command" {
+  type        = list(string)
+  description = "Migrator container command. Dev typically [\"apply\", \"--seed\"]; prod [\"apply\"] (migrate only)."
+  default     = ["apply"]
+}
+
+variable "migrator_cpu" {
+  type        = number
+  description = "DbMigrator task CPU units."
+  default     = 512
+}
+
+variable "migrator_memory" {
+  type        = number
+  description = "DbMigrator task memory (MiB)."
+  default     = 1024
+}
+
+variable "migrator_extra_environment_variables" {
+  type        = map(string)
+  description = "Extra env vars for the migrator (e.g. Seed__DefaultAdminPassword / JwtOptions__SigningKey when seeding outside the dev Development profile)."
+  default     = {}
+}
+
+################################################################################
+# Application Auth / Seed Variables
+################################################################################
+
+variable "hangfire_username" {
+  type        = string
+  description = "Hangfire dashboard username (the password is generated into Secrets Manager)."
+  default     = "admin"
+}
+
+variable "seed_default_admin_password" {
+  type        = string
+  sensitive   = true
+  description = "Root admin password for the migrator seed (`apply --seed`). Null = use the image's baked dev appsettings. Must satisfy the Identity password policy."
+  default     = null
+}
+
+variable "seed_demo_password" {
+  type        = string
+  sensitive   = true
+  description = "Shared password for demo-tenant users (`seed-demo`). Null = use the image's baked dev appsettings."
+  default     = null
 }
 
 ################################################################################

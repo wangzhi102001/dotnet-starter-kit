@@ -14,9 +14,19 @@ locals {
   # Container image constructed from registry, name, and tag.
   api_container_image = "${var.container_registry}/${var.api_image_name}:${var.container_image_tag}"
 
+  # DbMigrator image — same registry + tag as the API, different repository.
+  # Run as a one-shot ECS task (apply / apply --seed) by the deploy scripts.
+  migrator_container_image = "${var.container_registry}/${var.migrator_image_name}:${var.container_image_tag}"
+
   # Public origin of the API (no /api suffix) — used for the app OriginUrl and
-  # as the apiBase the React SPAs read from their runtime config.json.
-  api_origin = var.enable_https && var.domain_name != null ? "https://${var.domain_name}" : "http://${module.alb.dns_name}"
+  # as the apiBase the React SPAs read from their runtime config.json. HTTPS via
+  # a custom domain when set, else via the API CloudFront distribution (free
+  # *.cloudfront.net cert), else plain HTTP on the ALB.
+  api_origin = (
+    var.enable_https && var.domain_name != null ? "https://${var.domain_name}" :
+    var.enable_api_cloudfront ? "https://${one(aws_cloudfront_distribution.api[*].domain_name)}" :
+    "http://${module.alb.dns_name}"
+  )
 }
 
 ################################################################################
@@ -165,10 +175,14 @@ module "app_s3" {
   enable_intelligent_tiering = var.app_s3_enable_intelligent_tiering
   lifecycle_rules            = var.app_s3_lifecycle_rules
 
-  cors_rules = var.enable_https && var.domain_name != null ? [
+  # Browser presigned uploads (My Files, chat attachments) PUT directly from the
+  # SPA origins to S3, so the bucket must allow those origins — not just a custom
+  # domain. Reuse the API's allow-list (SPA CloudFront/alias origins + custom
+  # domain + extras), so it works on the default CloudFront domains too.
+  cors_rules = local.has_cors_origins ? [
     {
       allowed_methods = ["GET", "PUT", "POST"]
-      allowed_origins = ["https://${var.domain_name}"]
+      allowed_origins = local.cors_allowed_origins
       allowed_headers = ["*"]
       expose_headers  = ["ETag"]
       max_age_seconds = 3600
@@ -236,6 +250,63 @@ module "admin_site" {
   tags = local.common_tags
 }
 
+################################################################################
+# API CloudFront — HTTPS in front of the (HTTP-only) ALB without a custom
+# domain. Viewer↔CloudFront is HTTPS on the free *.cloudfront.net cert; the
+# CloudFront↔ALB hop stays HTTP inside AWS. Dynamic API: no caching, forward
+# everything (incl. Authorization) via the managed AllViewerExceptHostHeader.
+################################################################################
+
+data "aws_cloudfront_cache_policy" "caching_disabled" {
+  count = var.enable_api_cloudfront ? 1 : 0
+  name  = "Managed-CachingDisabled"
+}
+
+data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
+  count = var.enable_api_cloudfront ? 1 : 0
+  name  = "Managed-AllViewerExceptHostHeader"
+}
+
+resource "aws_cloudfront_distribution" "api" {
+  count       = var.enable_api_cloudfront ? 1 : 0
+  enabled     = true
+  comment     = "${local.name_prefix} API (ALB origin)"
+  price_class = var.frontend_cloudfront_price_class
+
+  origin {
+    domain_name = module.alb.dns_name
+    origin_id   = "alb"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  default_cache_behavior {
+    target_origin_id         = "alb"
+    viewer_protocol_policy   = "redirect-to-https"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods           = ["GET", "HEAD"]
+    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled[0].id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host[0].id
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+
+  tags = local.common_tags
+}
+
 locals {
   # Resolved SPA origins (custom alias when set, else the CloudFront domain).
   # Fall back to an override for SPAs hosted outside this stack.
@@ -249,6 +320,20 @@ locals {
     var.enable_https && var.domain_name != null ? ["https://${var.domain_name}"] : [],
     var.api_extra_cors_origins,
   ))
+
+  # Whether to emit the app bucket's CORS rule. Must be a PLAN-KNOWN boolean: the
+  # resolved origins above are CloudFront domains that don't exist until apply, so
+  # length(cors_allowed_origins) is unknown on first apply — feeding that into the
+  # s3_bucket module's `count` fails with "Invalid count argument". Gate on the
+  # known inputs that produce those origins instead.
+  has_cors_origins = (
+    var.enable_admin_site
+    || var.enable_dashboard_site
+    || var.admin_url != null
+    || var.dashboard_url != null
+    || (var.enable_https && var.domain_name != null)
+    || length(var.api_extra_cors_origins) > 0
+  )
 
   cors_environment_variables = {
     for idx, origin in local.cors_allowed_origins :
@@ -381,6 +466,70 @@ locals {
 }
 
 ################################################################################
+# Application Auth Secrets (generated → Secrets Manager → injected into tasks)
+#
+# The API hard-requires JwtOptions:SigningKey and HangfireOptions:Username/
+# Password (Require() in Production + ValidateOnStart in every env). Rather than
+# lean on the public dev appsettings (forgeable JWTs), generate them here and
+# inject via the task execution role like the DB connection string.
+################################################################################
+
+resource "random_password" "jwt_signing_key" {
+  length  = 64
+  special = false # consumed as ASCII bytes for HMAC — keep it alphanumeric
+}
+
+resource "random_password" "hangfire" {
+  length           = 24
+  special          = true
+  override_special = "!@#%^-_=+"
+}
+
+resource "aws_secretsmanager_secret" "jwt_signing_key" {
+  name        = "${var.environment}-jwt-signing-key"
+  description = "HMAC signing key for FSH API JWTs."
+  tags        = local.common_tags
+}
+
+resource "aws_secretsmanager_secret_version" "jwt_signing_key" {
+  secret_id     = aws_secretsmanager_secret.jwt_signing_key.id
+  secret_string = random_password.jwt_signing_key.result
+}
+
+resource "aws_secretsmanager_secret" "hangfire_password" {
+  name        = "${var.environment}-hangfire-password"
+  description = "Hangfire dashboard password for the FSH API."
+  tags        = local.common_tags
+}
+
+resource "aws_secretsmanager_secret_version" "hangfire_password" {
+  secret_id     = aws_secretsmanager_secret.hangfire_password.id
+  secret_string = random_password.hangfire.result
+}
+
+locals {
+  # Auth secrets injected into BOTH the API and the migrator task (the migrator
+  # otherwise self-injects a placeholder signing key; a real one is harmless).
+  app_auth_secrets = [
+    {
+      name      = "JwtOptions__SigningKey"
+      valueFrom = aws_secretsmanager_secret.jwt_signing_key.arn
+    },
+    {
+      name      = "HangfireOptions__Password"
+      valueFrom = aws_secretsmanager_secret.hangfire_password.arn
+    },
+  ]
+
+  # Optional dev seed credentials — injected only when set (prod runs `apply`
+  # without --seed, so it never reads them).
+  seed_environment_variables = merge(
+    var.seed_default_admin_password != null ? { "Seed__DefaultAdminPassword" = var.seed_default_admin_password } : {},
+    var.seed_demo_password != null ? { "Seed__DemoPassword" = var.seed_demo_password } : {},
+  )
+}
+
+################################################################################
 # ElastiCache Redis
 ################################################################################
 
@@ -397,9 +546,15 @@ module "redis" {
 
   node_type                  = var.redis_node_type
   num_cache_clusters         = var.redis_num_cache_clusters
+  engine                     = var.redis_engine
   engine_version             = var.redis_engine_version
   automatic_failover_enabled = var.redis_automatic_failover_enabled
   transit_encryption_enabled = var.redis_transit_encryption_enabled
+
+  # dev tears down without a final snapshot (matches RDS above); otherwise a
+  # repeated destroy collides with the prior attempt's snapshot name
+  # (SnapshotAlreadyExistsFault). staging/prod keep the final snapshot.
+  skip_final_snapshot = var.environment == "dev" ? true : false
 
   tags = local.common_tags
 }
@@ -433,6 +588,20 @@ module "api_service" {
   health_check_healthy_threshold = var.api_health_check_healthy_threshold
   deregistration_delay           = var.api_deregistration_delay
 
+  # Container-level liveness so ECS reports Healthy/Unhealthy instead of "Unknown"
+  # and restarts a wedged task. The `noble` image ships no curl/wget, so we use
+  # bash's built-in /dev/tcp to confirm Kestrel is accepting connections on the
+  # container port; app-level health is already covered by the ALB probing
+  # /health/live above. REQUIRES the full `noble` image — the chiseled image has
+  # no shell, so rebuild the API image (deploy --build-api) before applying this.
+  container_health_check = {
+    command      = ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/${var.api_container_port}"]
+    interval     = 30
+    timeout      = 5
+    retries      = 3
+    start_period = 60
+  }
+
   task_role_arn = aws_iam_role.api_task.arn
 
   enable_circuit_breaker = var.api_enable_circuit_breaker
@@ -454,6 +623,9 @@ module "api_service" {
       Storage__S3__Bucket        = var.app_s3_bucket_name
       Storage__S3__PublicBaseUrl = module.app_s3.cloudfront_domain_name != "" ? "https://${module.app_s3.cloudfront_domain_name}" : ""
       OriginOptions__OriginUrl   = local.api_origin
+      # Hangfire dashboard user (password arrives via `secrets` below). Both are
+      # [Required] + ValidateOnStart, so the API won't boot without them.
+      HangfireOptions__Username = var.hangfire_username
     },
     # Connection string is injected via env var only when NOT using a managed
     # (Secrets Manager) password; otherwise it arrives via `secrets` below.
@@ -466,13 +638,72 @@ module "api_service" {
     var.api_extra_environment_variables
   )
 
-  # When using managed password, inject the full connection string from Secrets Manager
-  secrets = var.db_manage_master_user_password ? [
+  # Injected from Secrets Manager by the task execution role: the JWT signing
+  # key + Hangfire password always, plus the DB connection string when managed.
+  secrets = concat(
+    local.app_auth_secrets,
+    var.db_manage_master_user_password ? [
+      {
+        name      = "DatabaseOptions__ConnectionString"
+        valueFrom = aws_secretsmanager_secret.db_connection_string[0].arn
+      }
+    ] : []
+  )
+
+  tags = local.common_tags
+}
+
+################################################################################
+# DbMigrator — one-shot ECS task
+#
+# Registers a runnable task definition only (no service). The deploy scripts
+# invoke it with `aws ecs run-task` after `apply` and wait for exit code 0.
+# Command is environment-driven: dev runs `apply --seed`, prod runs `apply`
+# (set per-env in terraform.tfvars via `migrator_command`). Seed credentials come
+# from seed_default_admin_password / seed_demo_password when set (else the baked
+# dev appsettings); the JWT signing key is injected from Secrets Manager.
+################################################################################
+
+module "migrator" {
+  count  = var.enable_migrator ? 1 : 0
+  source = "../../../modules/ecs_task"
+
+  name            = "${var.environment}-db-migrator"
+  region          = var.region
+  vpc_id          = module.network.vpc_id
+  container_image = local.migrator_container_image
+  command         = var.migrator_command
+  cpu             = var.migrator_cpu
+  memory          = var.migrator_memory
+
+  environment_variables = merge(
     {
-      name      = "DatabaseOptions__ConnectionString"
-      valueFrom = aws_secretsmanager_secret.db_connection_string[0].arn
-    }
-  ] : []
+      # Generic-host migrator selects its env from DOTNET_ENVIRONMENT, not ASPNETCORE_ENVIRONMENT.
+      DOTNET_ENVIRONMENT                  = local.aspnetcore_environment
+      DatabaseOptions__Provider           = "POSTGRESQL"
+      DatabaseOptions__MigrationsAssembly = "FSH.Starter.Migrations.PostgreSQL"
+      HangfireOptions__Username           = var.hangfire_username
+    },
+    # Plain connection string only when NOT using a managed (Secrets Manager)
+    # password; otherwise it arrives via `secrets` below — same as the API.
+    var.db_manage_master_user_password ? {} : {
+      DatabaseOptions__ConnectionString = local.db_connection_string_plain
+    },
+    # Seed credentials (when configured) so seeding doesn't depend on the baked
+    # dev appsettings; empty when unset → falls back to image config.
+    local.seed_environment_variables,
+    var.migrator_extra_environment_variables
+  )
+
+  secrets = concat(
+    local.app_auth_secrets,
+    var.db_manage_master_user_password ? [
+      {
+        name      = "DatabaseOptions__ConnectionString"
+        valueFrom = aws_secretsmanager_secret.db_connection_string[0].arn
+      }
+    ] : []
+  )
 
   tags = local.common_tags
 }

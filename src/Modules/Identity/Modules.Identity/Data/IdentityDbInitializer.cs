@@ -2,13 +2,11 @@ using Finbuckle.MultiTenant.Abstractions;
 using FSH.Framework.Persistence;
 using FSH.Framework.Shared.Constants;
 using FSH.Framework.Shared.Multitenancy;
-using FSH.Framework.Web.Origin;
 using FSH.Modules.Identity.Domain;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace FSH.Modules.Identity.Data;
 
@@ -19,7 +17,6 @@ internal sealed class IdentityDbInitializer(
     UserManager<FshUser> userManager,
     TimeProvider timeProvider,
     IMultiTenantContextAccessor<AppTenantInfo> multiTenantContextAccessor,
-    IOptions<OriginOptions> originSettings,
     ITenantInitialPasswordBuffer passwordBuffer,
     IConfiguration configuration) : IDbInitializer
 {
@@ -199,7 +196,10 @@ internal sealed class IdentityDbInitializer(
                 PhoneNumberConfirmed = true,
                 NormalizedEmail = multiTenantContextAccessor.MultiTenantContext.TenantInfo?.AdminEmail!.ToUpperInvariant(),
                 NormalizedUserName = adminUserName.ToUpperInvariant(),
-                ImageUrl = new Uri(originSettings.Value.OriginUrl! + MultitenancyConstants.Root.DefaultProfilePicture),
+                // No default avatar: the asset was never shipped, and baking an absolute
+                // {OriginUrl}/… URL at seed time pinned it to the seeder's localhost origin
+                // (migrator has no OriginOptions). Leave null → the SPA renders initials.
+                ImageUrl = null,
                 IsActive = true
             };
 
@@ -210,10 +210,8 @@ internal sealed class IdentityDbInitializer(
             var initialPassword = ResolveInitialAdminPassword(multiTenantContextAccessor.MultiTenantContext.TenantInfo!.Id!);
             var password = new PasswordHasher<FshUser>();
             adminUser.PasswordHash = password.HashPassword(adminUser, initialPassword);
-            // The IdentityResult MUST be checked: a silent failure here (e.g. a password-policy
-            // rejection or a transient DB error) would otherwise mark provisioning "Completed" with no
-            // admin user — an unrecoverable tenant with no login. Throwing surfaces it as a Failed
-            // provisioning step that the operator can retry.
+            // MUST check IdentityResult: a silent failure (password-policy reject, transient DB error)
+            // would mark provisioning "Completed" with no admin user; throwing makes it a retryable Failed.
             var createResult = await userManager.CreateAsync(adminUser);
             if (!createResult.Succeeded)
             {
