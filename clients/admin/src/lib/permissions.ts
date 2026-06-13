@@ -68,18 +68,12 @@ export const AuditingPermissions = Object.freeze({
   },
 } as const);
 
-export const OrganizationPermissions = Object.freeze({
-  Departments: {
-    View: "Permissions.Organization.Departments.View",
-    Manage: "Permissions.Organization.Departments.Manage",
-  },
-  Positions: {
-    View: "Permissions.Organization.Positions.View",
-    Manage: "Permissions.Organization.Positions.Manage",
-  },
-  UserDepartments: {
-    View: "Permissions.Organization.UserDepartments.View",
-    Manage: "Permissions.Organization.UserDepartments.Manage",
+export const WebhooksPermissions = Object.freeze({
+  Subscriptions: {
+    View: "Permissions.Webhooks.View",
+    Create: "Permissions.Webhooks.Create",
+    Delete: "Permissions.Webhooks.Delete",
+    Test: "Permissions.Webhooks.Test",
   },
 } as const);
 
@@ -180,15 +174,13 @@ export const PERMISSION_CATALOG: readonly PermissionGroup[] = [
     ],
   },
   {
-    category: "Organization",
-    blurb: "Manage organizational structure — departments, positions, and user assignments.",
+    category: "Webhooks",
+    blurb: "Manage outbound webhook subscriptions and inspect their deliveries.",
     entries: [
-      { name: OrganizationPermissions.Departments.View, description: "View departments", basic: true },
-      { name: OrganizationPermissions.Departments.Manage, description: "Create, update, and delete departments" },
-      { name: OrganizationPermissions.Positions.View, description: "View positions", basic: true },
-      { name: OrganizationPermissions.Positions.Manage, description: "Create, update, and delete positions" },
-      { name: OrganizationPermissions.UserDepartments.View, description: "View user-department assignments", basic: true },
-      { name: OrganizationPermissions.UserDepartments.Manage, description: "Assign and remove user-department memberships" },
+      { name: WebhooksPermissions.Subscriptions.View, description: "View webhook subscriptions & deliveries", basic: true },
+      { name: WebhooksPermissions.Subscriptions.Create, description: "Create webhook subscriptions" },
+      { name: WebhooksPermissions.Subscriptions.Delete, description: "Delete webhook subscriptions" },
+      { name: WebhooksPermissions.Subscriptions.Test, description: "Send test webhook deliveries" },
     ],
   },
 ];
