@@ -67,6 +67,9 @@ namespace FSH.Starter.Migrations.PostgreSQL.Identity
                     b.Property<string>("LastError")
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("NextRetryAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Payload")
                         .IsRequired()
                         .HasColumnType("text");
